@@ -1,0 +1,295 @@
+{% extends 'admin/base.html' %}
+{% load static %}
+{% block content %}
+
+<h1>Событие: {{ event.description|truncatechars:65 }}</h1>
+<form id="form-booking">
+    <label>Забронировать с:</label><br/>
+    <input
+        type="date"
+        id="start-date"
+        name="start-date"
+        value="{{ date }}"
+        required />
+    <input
+        type="time"
+        id="start-time"
+        name="start-time"
+        value="{{ time }}"
+        required />
+    <br/><label>По:</label><br/>
+    <input
+        type="date"
+        id="end-date"
+        name="end-date" required
+        value="{{ date_plus_one_hour }}"
+    />
+    <input
+        type="time"
+        id="end-time"
+        name="end-time" required
+        value="{{ time_plus_one_hour }}"
+    />
+    <br/>
+    <div id="select-room-container">
+        <label>В помещении:</label><br/>
+        <div id="select-room-container-bar">
+            <select id="select-room" required>
+            </select>
+        </div>
+    </div>
+    <div id="select-locations-container">
+        <label>Следующие части помещения:</label><br/>
+        <div id="select-locations-container-bar">
+            <select id="select-locations" multiple required>
+            </select>
+            <button type="button" id="button-select-all-locations" class="btn_brone">
+            <i id="button-select-all-locations-icon" class="fa fa-check"></i> Помещение будет забронировано целиком
+            </button>
+        </div>
+    </div>
+    <div id="comment-container">
+        <label for="comment">Комментарий:</label><br/>
+        <textarea id="comment" name="comment" rows="5" cols="33"></textarea><br/>
+    </div>
+    <button type="submit" id="button-confirm" class="btn_brone">Забронировать данное помещение</button>
+</form>
+<style>
+    #select-locations-container, #select-room-container, #comment-container {
+        margin-top: 1.4rem;
+        margin-bottom: 1.4rem;
+    }
+    #select-locations-container-bar {
+        display: flex;
+        flex-direction: row;
+        width: 100%;
+    }
+    #select-locations-container-bar #button-select-all-locations {
+        width: 30rem;
+        min-height: 33px;
+        margin-left: 1.4rem;
+    }
+    #select-locations-container-bar .selectize-control {
+        width: 100%;
+    }
+</style>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/selectize.js/0.12.6/js/standalone/selectize.min.js" crossorigin="anonymous"></script>
+<script defer>
+    let available_rooms = [];
+    let selected_room = "-1";
+    let selected_locations = [];
+    let start_date = "";
+    let start_time = "";
+    let end_date = "";
+    let end_time = "";
+
+    function setButtonSelectAllLocationsActive() {
+        document.getElementById("button-select-all-locations").innerHTML =
+        "<i id=\"button-select-all-locations-icon\" class=\"fa fa-pencil-square-o\"></i> Забронировать помещение целиком";
+    }
+
+    function setButtonSelectAllLocationsInactive() {
+        document.getElementById("button-select-all-locations").innerHTML =
+        "<i id=\"button-select-all-locations-icon\" class=\"fa fa-check\"></i> Помещение будет забронировано целиком";
+    }
+
+    setButtonSelectAllLocationsActive();
+
+    function updateAvailableLocations() {
+        if (start_date == "" || start_time == "" || end_date == "" || end_time == "") {
+            return;
+        }
+        fetch("../get_available_rooms", {
+          method: "post",
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            "start_date": start_date,
+            "start_time": start_time,
+            "end_date": end_date,
+            "end_time": end_time,
+          })
+        })
+        .then(response => response.json())
+        .then((response) => {
+            available_rooms = response;
+            selected_room = "-1";
+            selected_locations = [];
+
+            let $select_room = $('#select-room').selectize();
+            $select_room[0].selectize.clear();
+            $select_room[0].selectize.clearOptions();
+
+            let options = "";
+
+            let rooms = Object.keys(response);
+
+            if (rooms.length == 0) {
+                $select_room[0].selectize.addOption({
+                    value: "-1",
+                    text: "На данный промежуток времени нет свободных помещений"
+                });
+                $select_room[0].selectize.setValue("-1");
+                document.getElementById("button-select-all-locations").disabled = true;
+                document.getElementById("button-confirm").disabled = true;
+            } else {
+                rooms.forEach(room_pk => {
+                    $select_room[0].selectize.addOption({
+                        value: room_pk,
+                        text: response[room_pk].name
+                    });
+                });
+                document.getElementById("button-select-all-locations").disabled = false;
+                document.getElementById("button-confirm").disabled = false;
+            }
+
+            $select_room[0].selectize.refreshOptions();
+
+
+            let $select_locations = $('#select-locations').selectize();
+            $select_locations[0].selectize.clear();
+            $select_locations[0].selectize.clearOptions();
+            $select_locations[0].selectize.refreshOptions();
+        });
+    }
+
+    $(document).ready(function () {
+        let $select_locations = $('#select-locations').selectize();
+
+        $select_locations[0].selectize.on('change', function() {
+          if (selected_room == "-1") {
+            return;
+          }
+          console.log(selected_room);
+          console.log(available_rooms);
+          selected_locations = $select_locations[0].selectize.getValue();
+            if (available_rooms[selected_room].locations.length == selected_locations.length) {
+                setButtonSelectAllLocationsInactive();
+            } else {
+                setButtonSelectAllLocationsActive();
+            }
+        });
+
+        document.getElementById("button-select-all-locations").addEventListener("click", (event) => {
+            if (selected_room == "-1") {
+                return;
+            }
+
+            selected_locations = available_rooms[selected_room].locations.map(l => l.id);
+            $select_locations[0].selectize.setValue(selected_locations);
+            setButtonSelectAllLocationsInactive();
+        });
+    });
+
+    $(document).ready(function () {
+        var $select_room = $('#select-room').selectize();
+
+        $select_room[0].selectize.on('change', function() {
+            selected_room = $select_room[0].selectize.getValue() || "-1";
+
+            if (selected_room == "-1") {
+                setButtonSelectAllLocationsInactive();
+                return;
+              }
+
+            let $select_locations = $('#select-locations').selectize();
+            $select_locations[0].selectize.clear();
+            $select_locations[0].selectize.clearOptions();
+
+            available_rooms[selected_room].locations.forEach(location => {
+                $select_locations[0].selectize.addOption({
+                    value: location.id,
+                    text: location.name
+                });
+            });
+
+            $select_locations[0].selectize.refreshOptions();
+        });
+    });
+
+    document.getElementById("start-date").onchange = (event) => {
+        start_date = document.getElementById("start-date").value;
+        updateAvailableLocations();
+    };
+
+    document.getElementById("start-time").onchange = (event) => {
+        start_time = document.getElementById("start-time").value;
+        updateAvailableLocations();
+    };
+
+    document.getElementById("end-date").onchange = (event) => {
+        end_date = document.getElementById("end-date").value;
+        updateAvailableLocations();
+    };
+
+    document.getElementById("end-time").onchange = (event) => {
+        end_time = document.getElementById("end-time").value;
+        updateAvailableLocations();
+    };
+
+    document.getElementById("start-date").onchange(null);
+    document.getElementById("start-time").onchange(null);
+    document.getElementById("end-date").onchange(null);
+    document.getElementById("end-time").onchange(null);
+
+    document.getElementById("form-booking").onsubmit = (event) => {
+        event.preventDefault();
+
+        let comment = document.getElementById("comment").value;
+
+        if (selected_room == "-1" || selected_locations.length == 0) {
+            alert("Не все поля заполнены");
+            return false;
+        }
+
+        fetch("../get_booking_intersection", {
+          method: "post",
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            "start_date": start_date,
+            "start_time": start_time,
+            "end_date": end_date,
+            "end_time": end_time,
+            "locations_pk": selected_locations,
+          })
+        })
+        .then(response => response.json())
+        .then((response) => {
+           if (response.length == 0) {
+               fetch("../add_booking", {
+                  method: "post",
+                  headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    "start_date": start_date,
+                    "start_time": start_time,
+                    "end_date": end_date,
+                    "end_time": end_time,
+                    "locations_pk": selected_locations,
+                    "event_pk": {{ event.id }},
+                    "comment": comment
+                  })
+                });
+                alert("Успешно забронировано");
+                updateAvailableLocations();
+           } else {
+                let message = "Данная бронь пересекается со следующими мероприятиями:\n";
+                response.forEach(r => {
+                    message += r.description.substring(0, 50) + ` (с ${r.date_start} по ${r.date_end})` + "\n";
+                });
+                alert(message);
+           }
+        });
+
+        return false;
+    };
+</script>
+{% endblock %}
